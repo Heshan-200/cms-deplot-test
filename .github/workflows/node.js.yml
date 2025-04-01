@@ -24,11 +24,8 @@ jobs:
       - name: Build Strapi
         run: npm run build
 
-      - name: Ensure .cache directory exists
-        run: mkdir -p .cache
-
       - name: Compress Build Files
-        run: tar -czf strapi-build.tar.gz --ignore-failed-read .
+        run: tar -czf strapi-build.tar.gz .cache build config package.json package-lock.json
 
       - name: Copy Build Files to EC2
         env:
@@ -38,7 +35,7 @@ jobs:
         run: |
           echo "$PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
-          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key.pem strapi-build.tar.gz $USER@$HOST:/home/$USER/cms-deploy-test/
+          scp -o StrictHostKeyChecking=no -i private_key.pem strapi-build.tar.gz $USER@$HOST:/home/$USER/cms-deploy-test/
 
       - name: Deploy to EC2
         env:
