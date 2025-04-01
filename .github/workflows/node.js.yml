@@ -16,7 +16,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18  # Ensure this matches your Strapi version
+          node-version: 22  # Ensure this matches your Strapi version
 
       - name: Install Dependencies
         run: npm install
