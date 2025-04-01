@@ -59,6 +59,4 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST << 'EOF'
             cd /home/$USER/cms-deploy-test/
             tar -xzf strapi-build.tar.gz
-            npm install
-            pm2 restart strapi || pm2 start npm --name "strapi" -- start
           EOF
