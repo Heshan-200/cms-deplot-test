@@ -42,7 +42,7 @@ jobs:
         run: mkdir -p .cache
 
       - name: Prepare Files for Compression
-        run: tar -czf strapi-build.tar.gz --ignore-failed-read build config package.json package-lock.json .strapi .tmp data database public scripts src types .env .strapi-updater.json favicon.png jsconfig.json README.md
+        run: tar -czf strapi-build.tar.gz --ignore-failed-read build config package.json .strapi .tmp data database public scripts src types .env .strapi-updater.json favicon.png jsconfig.json README.md
 
       - name: Setup SSH Key and Permissions
         env:
@@ -72,7 +72,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST << 'EOF'
             echo "Starting Deployment..."
-            cd /home/$SSH_USER/cms-deploy-test/
+            cd /home/ubuntu/cms-deploy-test/
             tar -xvzf strapi-build.tar.gz
             npm install
             npm start
