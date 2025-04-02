@@ -19,25 +19,30 @@ jobs:
           echo "Creating .env file locally..."
           rm -f .env
           touch .env
-          # Write secrets to a temporary file
-          echo "${{ toJson(secrets) }}" > secrets.txt
-          # Check if secrets.txt was created successfully
-          if [ ! -f secrets.txt ]; then
-            echo "Error: Failed to create secrets.txt"
-            exit 1
-          fi
-          # Process secrets with Bash, skipping multi-line values
-          while IFS=':' read -r key value; do
-            # Clean up key and value
-            key=$(echo "$key" | tr -d ' ",' | xargs)
-            value=$(echo "$value" | tr -d ' ",' | xargs)
-            # Skip empty keys or values, and skip if value contains newlines
-            if [ -n "$key" ] && [ -n "$value" ] && ! echo "$value" | grep -q $'\n'; then
-              echo "$key=$value" >> .env
-            fi
-          done < <(sed 's/^{//; s/}$//; s/,/\n/g' secrets.txt | tr -d '{}')
-          # Clean up
-          rm secrets.txt
+          # Write the custom .env template with specific secrets
+          cat << 'EOF' > .env
+          # Server
+          HOST=0.0.0.0
+          PORT=${{ secrets.PORT }}
+
+          # Secrets
+          APP_KEYS=${{ secrets.APP_KEYS }}
+          API_TOKEN_SALT=${{ secrets.API_TOKEN_SALT }}
+          ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }}
+          TRANSFER_TOKEN_SALT=${{ secrets.TRANSFER_TOKEN_SALT }}
+
+          # Database
+          DATABASE_CLIENT=${{ secrets.DATABASE_CLIENT }}
+          DATABASE_HOST=${{ secrets.DATABASE_HOST }}
+          DATABASE_PORT=${{ secrets.DATABASE_PORT }}
+          DATABASE_NAME=${{ secrets.DATABASE_NAME }}
+          DATABASE_USERNAME=${{ secrets.DATABASE_USERNAME }}
+          DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
+          DATABASE_SSL=${{ secrets.DATABASE_SSL }}
+          DATABASE_FILENAME=${{ secrets.DATABASE_FILENAME }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          TEST_ENV=${{ secrets.TEST_ENV }}
+          EOF
           echo "Generated .env file:"
           cat .env
       - name: Transfer .env to EC2
