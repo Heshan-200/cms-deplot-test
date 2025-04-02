@@ -17,8 +17,7 @@ jobs:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node-
-      - run: |
-          npm i
+      - run: npm ci
       - run: npm run build
       - run: |
           mkdir -p deploy
@@ -36,45 +35,41 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: strapi-build
-      - env:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Set up SSH key
+        env:
           SSH_PRIVATE_KEY: ${{ secrets.MY_EC2_PRIVATE_KEY }}
         run: |
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
-      - env:
+      - name: Deploy to EC2 and Create .env with All Secrets
+        env:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
         run: |
           rsync -avz --progress --no-compress -e "ssh -o StrictHostKeyChecking=no -o Ciphers=aes128-ctr -i private_key.pem" strapi-build.tar.gz ubuntu@$SSH_HOST:/home/ubuntu/cms-deploy-test/
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
-            # Create the uploads directory if it doesn't exist
             mkdir -p /home/ubuntu/cms-deploy-test/public/uploads
 
-            # Stop the existing Strapi process (if any)
+            # Stop existing Strapi process
             pm2 stop strapi || true
-
-            # Clear memory cache (optional)
-            sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory (sudo required)"
 
             # Extract the build files
             cd /home/ubuntu/cms-deploy-test/
             tar -xvzf strapi-build.tar.gz
-            cd /home/ubuntu/cms-deploy-test/
-            
+
+            # Create .env file
             echo "Creating .env file..."
             rm -f .env
             touch .env
 
-            # Extract GitHub secrets and write them to .env
-            echo "${{ secrets.MY_EC2_SSH_KEY }}" > private_key.pem
-            chmod 600 private_key.pem
-
-            # Only get secrets with "GITHUB_SECRET_" prefix and add to .env file
-            echo "${{ toJson(secrets) }}" | jq -r 'to_entries | map("\(.key)=\(.value)") | .[]' > .env
+            # Write all GitHub secrets to .env using the secrets context
+            echo "${{ toJson(secrets) }}" | jq -r 'to_entries | map("\(.key)=\(.value)") | .[]' >> .env
 
             echo "Generated .env file:"
             cat .env
 
-            # Remove the tarball
+            # Clean up
             rm -rf strapi-build.tar.gz
 
             pm2 restart strapi || pm2 start npm --name "strapi" -- start
