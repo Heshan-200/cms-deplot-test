@@ -42,7 +42,7 @@ jobs:
         run: mkdir -p .cache
 
       - name: Compress Build Files
-        run: tar -czf strapi-build.tar.gz --ignore-failed-read build config package.json package-lock.json
+        run: tar -czf strapi-build.tar.gz *
 
       - name: Setup SSH Key and Permissions
         env:
