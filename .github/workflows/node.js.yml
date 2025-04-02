@@ -42,7 +42,7 @@ jobs:
         run: mkdir -p .cache
 
       - name: Compress Build Files
-        run: tar --warning=no-file-changed -czf strapi-build.tar.gz --exclude=node_modules 
+        run: tar --warning=no-file-changed -czf strapi-build.tar.gz --exclude=node_modules .
 
       - name: Setup SSH Key and Permissions
         env:
