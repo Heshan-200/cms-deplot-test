@@ -17,11 +17,12 @@ jobs:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node-
-      - run: npm i
+      - run: |
+          npm i
       - run: npm run build
       - run: |
           mkdir -p deploy
-          cp -r build config package.json package-lock.json src database deploy/
+          cp -r build config package.json package-lock.json src database node_modules deploy/
           tar -czf strapi-build.tar.gz -C deploy .
       - uses: actions/upload-artifact@v4
         with:
@@ -47,39 +48,10 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
           cd /home/ubuntu/cms-deploy-test/
           pm2 stop strapi || true
-
-          # Check disk space (need at least 2GB free)
-          FREE_SPACE=$(df -m / | tail -1 | awk '{print $4}')
-          if [ "$FREE_SPACE" -lt 2048 ]; then
-            echo "Error: Insufficient disk space ($FREE_SPACE MB free, need 2048 MB for swap)"
-            exit 1
-          fi
-
-          # Clear memory
           sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory (sudo required)"
-
-          # Setup swap if not present
-          if [ ! -f /swapfile ]; then
-            echo "Creating 2GB swap space..."
-            sudo fallocate -l 2G /swapfile || { echo "Failed to create swap (disk full?)"; exit 1; }
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-            sudo swapon /swapfile || { echo "Failed to enable swap"; exit 1; }
-            echo "Swap created and enabled"
-          else
-            echo "Swap already exists"
-          fi
-
-          # Log memory and swap status
-          echo "Memory before npm i:"
-          free -m
-
+          cd /home/ubuntu/cms-deploy-test/
           tar -xvzf strapi-build.tar.gz
-          npm i || { echo "npm i failed"; exit 1; }
-          
-          echo "Memory after npm i:"
-          free -m
-
-          pm2 start npm --name "strapi" -- start || pm2 restart strapi
+          cd /home/ubuntu/cms-deploy-test/
           rm -rf strapi-build.tar.gz
+          npm start
           EOF
