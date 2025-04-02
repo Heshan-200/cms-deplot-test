@@ -42,7 +42,7 @@ jobs:
         run: mkdir -p .cache
 
       - name: Compress Build Files
-        run: tar -czf strapi-build.tar.gz *
+        run: tar -czf strapi-build.tar.gz --exclude=node_modules .
 
       - name: Setup SSH Key and Permissions
         env:
@@ -74,5 +74,7 @@ jobs:
             echo "Starting Deployment..."
             cd /home/$SSH_USER/cms-deploy-test/
             tar -xvzf strapi-build.tar.gz
+            npm install
+            npm start
             echo "Deployment Completed!"
           EOF
