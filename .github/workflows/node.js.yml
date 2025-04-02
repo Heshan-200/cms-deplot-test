@@ -21,9 +21,16 @@ jobs:
           echo "Creating .env file locally..."
           rm -f .env
           touch .env
-          # Use a more robust way to handle secrets
+          # Write secrets to a temporary JSON file with proper escaping
           echo "${{ toJson(secrets) }}" > secrets.json
-          jq -r 'to_entries | map("\(.key)=\(.value)") | .[]' secrets.json >> .env
+          # Check if secrets.json was created successfully
+          if [ ! -f secrets.json ]; then
+            echo "Error: Failed to create secrets.json"
+            exit 1
+          fi
+          # Use jq to process the JSON, handling multi-line values
+          jq -r 'to_entries | map(.key + "=" + (if (.value | type) == "string" then .value | gsub("\n"; "\\n") else .value | tostring end)) | .[]' secrets.json >> .env
+          # Clean up
           rm secrets.json
           echo "Generated .env file:"
           cat .env
