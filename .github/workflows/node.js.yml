@@ -12,14 +12,14 @@ jobs:
     steps:
       - name: Setup SSH Key and Permissions
         env:
-          PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          SSH_PRIVATE_KEY: ${{ secrets.MY_EC2_PRIVATE_KEY }}
         run: |
-          echo "$PRIVATE_KEY" > private_key.pem
+          echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
 
       - name: Test SSH Connection
         env:
-          HOST: ${{ secrets.EC2_HOST }}
-          USER: ubuntu  # Ensure this matches your EC2 username (ec2-user for Amazon Linux)
+          SSH_HOST: ${{ secrets.MY_EC2_HOST }}
+          SSH_USER: ${{ secrets.MY_EC2_USER }}
         run: |
-          ssh -vvv -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST "echo SSH Connection Successful!"
+          ssh -vvv -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST "echo SSH Connection Successful!"
