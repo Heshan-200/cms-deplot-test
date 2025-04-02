@@ -50,7 +50,13 @@ jobs:
           sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory"
           cd /home/ubuntu/cms-deploy-test/
           tar -xvzf strapi-build.tar.gz
-          npm i --production
+          sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory"
+          cd /home/ubuntu/cms-deploy-test/
+          npm i
+          sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory"
+          cd /home/ubuntu/cms-deploy-test/
           pm2 start npm --name "strapi" -- start || pm2 restart strapi
+          sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory"
+          cd /home/ubuntu/cms-deploy-test/
           rm -rf strapi-build.tar.gz
           EOF
