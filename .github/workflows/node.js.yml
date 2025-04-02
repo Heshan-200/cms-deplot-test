@@ -46,12 +46,24 @@ jobs:
         run: |
           rsync -avz --progress --no-compress -e "ssh -o StrictHostKeyChecking=no -o Ciphers=aes128-ctr -i private_key.pem" strapi-build.tar.gz ubuntu@$SSH_HOST:/home/ubuntu/cms-deploy-test/
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
-          cd /home/ubuntu/cms-deploy-test/
-          pm2 stop strapi || true
-          sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory (sudo required)"
-          cd /home/ubuntu/cms-deploy-test/
-          tar -xvzf strapi-build.tar.gz
-          cd /home/ubuntu/cms-deploy-test/
-          rm -rf strapi-build.tar.gz
-          npm start
+            # Create the uploads directory if it doesn't exist
+            mkdir -p /home/ubuntu/cms-deploy-test/public/uploads
+
+            # Stop the existing Strapi process (if any)
+            pm2 stop strapi || true
+
+            # Clear memory cache (optional)
+            sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory (sudo required)"
+
+            # Extract the build files
+            cd /home/ubuntu/cms-deploy-test/
+            tar -xvzf strapi-build.tar.gz
+            cd /home/ubuntu/cms-deploy-test/
+
+            # Remove the tarball
+            rm -rf strapi-build.tar.gz
+
+            # Install dependencies and start Strapi
+            npm install
+            pm2 restart strapi || pm2 start npm --name "strapi" -- start
           EOF
