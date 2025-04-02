@@ -59,10 +59,11 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
           echo "Starting Deployment...."
           cd /home/ubuntu/cms-deploy-test/
+          echo "Extracting build files..."
+          tar -xvzf strapi-build.tar.gz
           # Ensure Node.js and npm are installed
           node -v || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs)
           npm ci --omit=dev
           pm2 restart strapi || pm2 start npm --name "strapi" -- start
           echo "Deployment Completed!"
-          rm -rf strapi-build.tar.gz
           EOF
