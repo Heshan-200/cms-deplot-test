@@ -92,9 +92,10 @@ jobs:
             tar -xvzf strapi-build.tar.gz
 
             # Remove the tarball
+            cd /home/ubuntu/cms-deploy-test/
             rm -rf strapi-build.tar.gz
 
             # Install dependencies and start Strapi
-            npm ci
+            cd /home/ubuntu/cms-deploy-test/
             pm2 restart strapi || pm2 start npm --name "strapi" -- start
           EOF
