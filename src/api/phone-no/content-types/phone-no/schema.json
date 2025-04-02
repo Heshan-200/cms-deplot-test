@@ -1,0 +1,17 @@
+{
+  "kind": "collectionType",
+  "collectionName": "phone_nos",
+  "info": {
+    "singularName": "phone-no",
+    "pluralName": "phone-nos",
+    "displayName": "PhoneNo"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "attributes": {
+    "no": {
+      "type": "string"
+    }
+  }
+}
