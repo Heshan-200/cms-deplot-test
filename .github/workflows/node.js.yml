@@ -30,18 +30,6 @@ jobs:
       - name: Build Strapi
         run: npm run build
 
-      - name: Generate .env File
-        run: |
-          echo "Creating .env file..."
-          rm -f .env
-          touch .env
-
-          # Extract GitHub secrets and write them to .env
-          echo "${{ toJson(secrets) }}" | jq -r 'to_entries | map(select(.key | startswith("GITHUB_SECRET_"))) | map("\(.key | sub("^GITHUB_SECRET_"; ""))=\(.value)") | .[]' > .env
-
-          echo "Generated .env file:"
-          cat .env
-
       - name: Prepare Deployment Package
         run: |
           mkdir -p deploy
@@ -92,20 +80,36 @@ jobs:
             node -v || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs)
             pm2 -v || npm install -g pm2
 
+            cd /home/$SSH_USER/cms-deploy-test/
+
             # Ensure the public/uploads directory exists
             mkdir -p public/uploads
 
             # Stop the running Strapi instance if exists
+            cd /home/$SSH_USER/cms-deploy-test/
             pm2 stop strapi || true
 
             # Extract build files
+            cd /home/$SSH_USER/cms-deploy-test/
             tar -xvzf strapi-build.tar.gz
+
+            echo "Creating .env file..."
+
+            cd /home/$SSH_USER/cms-deploy-test/
+            rm -f .env
+            touch .env
+
+            # Extract GitHub secrets and write them to .env
+            echo "${{ toJson(secrets) }}" | jq -r 'to_entries | map(select(.key | startswith("GITHUB_SECRET_"))) | map("\(.key | sub("^GITHUB_SECRET_"; ""))=\(.value)") | .[]' > .env
+
+            echo "Generated .env file:"
+            cat .env
+
+            cd /home/$SSH_USER/cms-deploy-test/
             rm -rf strapi-build.tar.gz
 
-            # Install dependencies
-            npm ci --omit=dev
-
             # Start or Restart Strapi
+            cd /home/$SSH_USER/cms-deploy-test/
             pm2 restart strapi || pm2 start npm --name "strapi" -- start
 
             echo "✅ Deployment Completed Successfully!"
