@@ -3,7 +3,7 @@ name: Deploy Strapi to EC2
 on:
   push:
     branches:
-      - main  # Runs when changes are pushed to the main branch
+      - main  # Trigger deployment on push to the main branch
 
 jobs:
   build:
@@ -24,31 +24,43 @@ jobs:
       - name: Build Strapi
         run: npm run build
 
-      - name: Ensure Build Directory Exists
-        run: mkdir -p build
+      - name: Ensure .cache directory exists
+        run: mkdir -p .cache
 
       - name: Compress Build Files
         run: tar -czf strapi-build.tar.gz --ignore-failed-read build config package.json package-lock.json
 
-      - name: Copy Build Files to EC2
+      - name: Setup SSH Key and Permissions
         env:
           PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
-          HOST: ${{ secrets.EC2_HOST }}
-          USER: ubuntu
         run: |
           echo "$PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
-          rsync -avz -e "ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i private_key.pem" strapi-build.tar.gz $USER@$HOST:/home/$USER/cms-deploy-test/
 
-      - name: Deploy to EC2
+      - name: Test SSH Connection
         env:
-          PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          HOST: ${{ secrets.EC2_HOST }}
+          USER: ubuntu  # Ensure this matches your EC2 user (e.g., ec2-user for Amazon Linux)
+        run: |
+          ssh -vvv -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST "echo SSH Connection Successful!"
+
+      - name: Copy Build Files to EC2
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
+          USER: ubuntu  # Ensure this matches your EC2 user
+        run: |
+          scp -o StrictHostKeyChecking=no -i private_key.pem strapi-build.tar.gz $USER@$HOST:/home/$USER/cms-deploy-test/
+
+      - name: Deploy Strapi on EC2
+        env:
           HOST: ${{ secrets.EC2_HOST }}
           USER: ubuntu
         run: |
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i private_key.pem $USER@$HOST << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST << 'EOF'
+            echo "Starting Deployment..."
             cd /home/$USER/cms-deploy-test/
             tar -xzf strapi-build.tar.gz
-            npm install
-            pm2 restart strapi || pm2 start npm --name "strapi" -- start
+            npm install --production
+            pm2 restart strapi || pm2 start npm --name "strapi" -- run start
+            echo "Deployment Completed!"
           EOF
