@@ -28,8 +28,8 @@ jobs:
             echo "Error: Failed to create secrets.json"
             exit 1
           fi
-          # Filter out MY_EC2_PRIVATE_KEY and process multi-line values
-          jq -r 'to_entries | map(select(.key != "MY_EC2_PRIVATE_KEY") | .key + "=" + (if (.value | type) == "string" then .value | gsub("\n"; "\\n") else .value | tostring end)) | .[]' secrets.json >> .env
+          # Filter out secrets with newlines and process the rest
+          jq -r 'to_entries | map(select(.value | type == "string" and (contains("\n") | not)) | .key + "=" + .value) | .[]' secrets.json >> .env
           # Clean up
           rm secrets.json
           echo "Generated .env file:"
