@@ -49,14 +49,14 @@ jobs:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
           SSH_USER: ${{ secrets.MY_EC2_USER }}
         run: |
-          scp -o StrictHostKeyChecking=no -i private_key.pem strapi-build.tar.gz $ubuntu@$SSH_HOST:/home/$SSH_USER/cms-deploy-test/
+          scp -o StrictHostKeyChecking=no -i private_key.pem strapi-build.tar.gz ubuntu@$SSH_HOST:/home/$SSH_USER/cms-deploy-test/
 
       - name: Deploy Strapi on EC2
         env:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
           SSH_USER: ${{ secrets.MY_EC2_USER }}
         run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem $ubuntu@$SSH_HOST << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
             echo "Starting Deployment..."
             cd /home/ubuntu/cms-deploy-test/
             tar -xvzf strapi-build.tar.gz
