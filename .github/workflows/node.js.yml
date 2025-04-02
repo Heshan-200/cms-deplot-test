@@ -9,15 +9,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Cache Node.js dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -25,7 +25,7 @@ jobs:
             ${{ runner.os }}-node-
 
       - name: Install Dependencies
-        run: npm i
+        run: npm i  # Changed from npm ci
 
       - name: Build Strapi
         run: npm run build
@@ -37,7 +37,7 @@ jobs:
           tar -czf strapi-build.tar.gz -C deploy .
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: strapi-build
           path: strapi-build.tar.gz
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: strapi-build
 
@@ -67,13 +67,13 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST << 'EOF'
           cd /home/$SSH_USER/cms-deploy-test/
           echo "Stopping Strapi to free memory..."
-          pm2 stop strapi || true  # Stop Strapi if running
+          pm2 stop strapi || true
           echo "Clearing system memory..."
           sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory (sudo required)"
           echo "Extracting build files..."
           tar -xvzf strapi-build.tar.gz
           echo "Installing production dependencies..."
-          npm i
+          npm i --production  # Changed from npm ci --omit=dev
           echo "Starting Strapi..."
           pm2 start npm --name "strapi" -- start || pm2 restart strapi
           echo "Cleaning up..."
