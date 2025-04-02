@@ -30,10 +30,22 @@ jobs:
       - name: Build Strapi
         run: npm run build
 
+      - name: Generate .env File
+        run: |
+          echo "Creating .env file..."
+          rm -f .env
+          touch .env
+
+          # Extract GitHub secrets and write them to .env
+          echo "${{ toJson(secrets) }}" | jq -r 'to_entries | map(select(.key | startswith("GITHUB_SECRET_"))) | map("\(.key | sub("^GITHUB_SECRET_"; ""))=\(.value)") | .[]' > .env
+
+          echo "Generated .env file:"
+          cat .env
+
       - name: Prepare Deployment Package
         run: |
           mkdir -p deploy
-          cp -r build config package.json package-lock.json src database node_modules public deploy/
+          cp -r build config package.json package-lock.json src database node_modules public .env deploy/
           tar -czf strapi-build.tar.gz -C deploy .
 
       - name: Upload Build Artifact
@@ -57,9 +69,6 @@ jobs:
         run: |
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
-
-      - name: Ensure rsync is Installed
-        run: sudo apt update && sudo apt install -y rsync
 
       - name: Transfer Build to EC2
         env:
@@ -89,23 +98,9 @@ jobs:
             # Stop the running Strapi instance if exists
             pm2 stop strapi || true
 
-            # Clear memory cache (optional)
-            sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "⚠️ Failed to clear memory (sudo required)"
-
             # Extract build files
             tar -xvzf strapi-build.tar.gz
             rm -rf strapi-build.tar.gz
-
-            # Auto-generate .env file from all GitHub Secrets
-            echo "Generating .env file..."
-            rm -f .env
-            touch .env
-
-            # Loop through all GitHub Secrets passed as environment variables
-            env | grep '^GITHUB_SECRET_' | while IFS='=' read -r key value; do
-              key=\$(echo "\$key" | sed 's/^GITHUB_SECRET_//')
-              echo "\$key=\$value" >> .env
-            done
 
             # Install dependencies
             npm ci --omit=dev
