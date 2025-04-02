@@ -1,0 +1,73 @@
+name: Deploy Strapi to EC2
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+      - run: npm ci
+      - run: npm run build
+      - run: |
+          mkdir -p deploy
+          cp -r build config package.json package-lock.json src database node_modules deploy/
+          tar -czf strapi-build.tar.gz -C deploy .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: strapi-build
+          path: strapi-build.tar.gz
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: strapi-build
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Set up SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.MY_EC2_PRIVATE_KEY }}
+        run: |
+          echo "$SSH_PRIVATE_KEY" > private_key.pem
+          chmod 600 private_key.pem
+      - name: Create .env file locally
+        run: |
+          echo "Creating .env file locally..."
+          rm -f .env
+          touch .env
+          echo "${{ toJson(secrets) }}" | jq -r 'to_entries | map("\(.key)=\(.value)") | .[]' >> .env
+          echo "Generated .env file:"
+          cat .env
+      - name: Deploy to EC2
+        env:
+          SSH_HOST: ${{ secrets.MY_EC2_HOST }}
+        run: |
+          rsync -avz --progress --no-compress -e "ssh -o StrictHostKeyChecking=no -o Ciphers=aes128-ctr -i private_key.pem" strapi-build.tar.gz .env ubuntu@$SSH_HOST:/home/ubuntu/cms-deploy-test/
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
+            mkdir -p /home/ubuntu/cms-deploy-test/public/uploads
+
+            # Stop existing Strapi process
+            pm2 stop strapi || true
+
+            # Extract the build files
+            cd /home/ubuntu/cms-deploy-test/
+            tar -xvzf strapi-build.tar.gz
+
+            # Clean up
+            rm -rf strapi-build.tar.gz
+
+            pm2 restart strapi || pm2 start npm --name "strapi" -- start
+          EOF
