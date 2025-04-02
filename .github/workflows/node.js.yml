@@ -73,6 +73,6 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST << 'EOF'
             echo "Starting Deployment..."
             cd /home/$SSH_USER/cms-deploy-test/
-            tar -xzf strapi-build.tar.gz
+            tar -xvzf strapi-build.tar.gz
             echo "Deployment Completed!"
           EOF
