@@ -13,10 +13,24 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      - name: Setup SSH Key and Permissions
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.MY_EC2_PRIVATE_KEY }}
+        run: |
+          echo "$SSH_PRIVATE_KEY" > private_key.pem
+          chmod 600 private_key.pem
+
+      - name: Test SSH Connection
+        env:
+          SSH_HOST: ${{ secrets.MY_EC2_HOST }}
+          SSH_USER: ${{ secrets.MY_EC2_USER }}
+        run: |
+          ssh -vvv -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST "echo SSH Connection Successful!"
+
       - name: Install Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18  # Ensure this matches your Strapi version
+          node-version: 22  # Ensure this matches your Strapi version
 
       - name: Install Dependencies
         run: npm install
