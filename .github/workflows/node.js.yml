@@ -1,69 +1,82 @@
 name: Deploy Strapi to EC2
-
 on:
   push:
     branches:
-      - main  # Trigger deployment on push to the main branch
+      - main
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Setup SSH Key and Permissions
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22
+
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install Dependencies
+        run: npm i
+
+      - name: Build Strapi
+        run: npm run build
+
+      - name: Prepare Files for Deployment
+        run: |
+          mkdir -p deploy
+          cp -r build config package.json package-lock.json src database public deploy/
+          tar -czf strapi-build.tar.gz -C deploy .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: strapi-build
+          path: strapi-build.tar.gz
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: strapi-build
+
+      - name: Setup SSH Key
         env:
           SSH_PRIVATE_KEY: ${{ secrets.MY_EC2_PRIVATE_KEY }}
         run: |
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
 
-      - name: Test SSH Connection
+      - name: Deploy to EC2
         env:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
           SSH_USER: ${{ secrets.MY_EC2_USER }}
         run: |
-          ssh -vvv -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST "echo SSH Connection Successful!"
-
-      - name: Install Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 22  # Ensure this matches your Strapi version
-
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Build Strapi
-        run: npm run build
-
-      - name: Ensure .cache directory exists
-        run: mkdir -p .cache
-
-      - name: Prepare Files for Compression
-        run: tar -czf strapi-build.tar.gz --ignore-failed-read build config package.json .strapi .tmp data database public scripts src types .env .strapi-updater.json favicon.png jsconfig.json README.md
-        
-      - name: Copy Build Files to EC2
-        env:
-          SSH_HOST: ${{ secrets.MY_EC2_HOST }}
-          SSH_USER: ${{ secrets.MY_EC2_USER }}
-        run: |
-          scp -o StrictHostKeyChecking=no -i private_key.pem strapi-build.tar.gz ubuntu@$SSH_HOST:/home/$SSH_USER/cms-deploy-test/
-
-      - name: Deploy Strapi on EC2
-        env:
-          SSH_HOST: ${{ secrets.MY_EC2_HOST }}
-          SSH_USER: ${{ secrets.MY_EC2_USER }}
-        run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
-          echo "Starting Deployment...."
-          cd /home/ubuntu/cms-deploy-test/
+          rsync -avz --progress -e "ssh -o StrictHostKeyChecking=no -i private_key.pem" strapi-build.tar.gz $SSH_USER@$SSH_HOST:/home/$SSH_USER/cms-deploy-test/
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST << 'EOF'
+          cd /home/$SSH_USER/cms-deploy-test/
+          echo "Stopping Strapi to free memory..."
+          pm2 stop strapi || true  # Stop Strapi if running
+          echo "Clearing system memory..."
+          sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory (sudo required)"
           echo "Extracting build files..."
           tar -xvzf strapi-build.tar.gz
-          # Ensure Node.js and npm are installed
-          node -v || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs)
-          npm ci --omit=dev
-          pm2 restart strapi || pm2 start npm --name "strapi" -- start
-          echo "Deployment Completed!"
+          echo "Installing production dependencies..."
+          npm i
+          echo "Starting Strapi..."
+          pm2 start npm --name "strapi" -- start || pm2 restart strapi
+          echo "Cleaning up..."
+          rm -rf strapi-build.tar.gz
+          echo "Deployment completed!"
           EOF
