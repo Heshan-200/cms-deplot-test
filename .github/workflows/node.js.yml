@@ -10,9 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # Step 2: Setup SSH key and permissions
       - name: Setup SSH Key and Permissions
         env:
           SSH_PRIVATE_KEY: ${{ secrets.MY_EC2_PRIVATE_KEY }}
@@ -20,6 +22,7 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
 
+      # Step 3: Test SSH connection to EC2
       - name: Test SSH Connection
         env:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
@@ -27,23 +30,29 @@ jobs:
         run: |
           ssh -vvv -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST "echo SSH Connection Successful!"
 
+      # Step 4: Install Node.js on GitHub Actions runner
       - name: Install Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 22  # Ensure this matches your Strapi version
 
+      # Step 5: Install dependencies on GitHub Actions runner
       - name: Install Dependencies
         run: npm install
 
+      # Step 6: Build Strapi
       - name: Build Strapi
         run: npm run build
 
+      # Step 7: Ensure .cache directory exists
       - name: Ensure .cache directory exists
         run: mkdir -p .cache
 
+      # Step 8: Prepare files for compression
       - name: Prepare Files for Compression
         run: tar -czf strapi-build.tar.gz --ignore-failed-read build config package.json .strapi .tmp data database public scripts src types .env .strapi-updater.json favicon.png jsconfig.json README.md
-        
+
+      # Step 9: Copy build files to EC2
       - name: Copy Build Files to EC2
         env:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
@@ -51,17 +60,18 @@ jobs:
         run: |
           scp -o StrictHostKeyChecking=no -i private_key.pem strapi-build.tar.gz ubuntu@$SSH_HOST:/home/$SSH_USER/cms-deploy-test/
 
+      # Step 10: Deploy Strapi on EC2
       - name: Deploy Strapi on EC2
         env:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
           SSH_USER: ${{ secrets.MY_EC2_USER }}
         run: |
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
-            echo "Starting Deployment..."
-            cd /home/ubuntu/cms-deploy-test/
-            tar -xvzf strapi-build.tar.gz
-            npm install
-            npm start
-            echo "Deployment Completed!"
-            rm -rf strapi-build.tar.gz
+          echo "Starting Deployment..."
+          cd /home/ubuntu/cms-deploy-test/
+          node -v || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs)
+          npm ci --omit=dev
+          pm2 restart strapi || pm2 start npm --name "strapi" -- start
+          echo "Deployment Completed!"
+          rm -rf strapi-build.tar.gz
           EOF
