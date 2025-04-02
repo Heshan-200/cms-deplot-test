@@ -33,7 +33,7 @@ jobs:
       - name: Prepare Deployment Package
         run: |
           mkdir -p deploy
-          cp -r build config package.json package-lock.json src database node_modules public .env deploy/
+          cp -r build config package.json package-lock.json src database node_modules public deploy/
           tar -czf strapi-build.tar.gz -C deploy .
 
       - name: Upload Build Artifact
