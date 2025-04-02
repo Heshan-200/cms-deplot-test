@@ -21,7 +21,10 @@ jobs:
           echo "Creating .env file locally..."
           rm -f .env
           touch .env
-          echo "${{ toJson(secrets) }}" | jq -r 'to_entries | map("\(.key)=\(.value)") | .[]' >> .env
+          # Use a more robust way to handle secrets
+          echo "${{ toJson(secrets) }}" > secrets.json
+          jq -r 'to_entries | map("\(.key)=\(.value)") | .[]' secrets.json >> .env
+          rm secrets.json
           echo "Generated .env file:"
           cat .env
       - name: Transfer .env to EC2
