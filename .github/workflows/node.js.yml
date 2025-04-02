@@ -30,10 +30,26 @@ jobs:
       - name: Build Strapi
         run: npm run build
 
+      - name: Generate .env File
+        run: |
+          echo "Creating .env file..."
+          rm -f .env
+          touch .env
+
+          # Extract GitHub secrets and write them to .env
+          echo "${{ secrets.MY_EC2_SSH_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+
+          # Only get secrets with "GITHUB_SECRET_" prefix and add to .env file
+          echo "${{ toJson(secrets) }}" | jq -r 'to_entries | map(select(.key | startswith("GITHUB_SECRET_"))) | map("\(.key | sub("^GITHUB_SECRET_"; ""))=\(.value)") | .[]' > .env
+
+          echo "Generated .env file:"
+          cat .env
+
       - name: Prepare Deployment Package
         run: |
           mkdir -p deploy
-          cp -r build config package.json package-lock.json src database node_modules public deploy/
+          cp -r build config package.json package-lock.json src database node_modules public .env deploy/
           tar -czf strapi-build.tar.gz -C deploy .
 
       - name: Upload Build Artifact
@@ -58,58 +74,42 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
 
+      - name: Create Directory on EC2
+        run: |
+          echo "Creating directory on EC2..."
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@${{ secrets.MY_EC2_HOST }} "mkdir -p /home/ubuntu/cms-deploy-test"
+
       - name: Transfer Build to EC2
         env:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
           SSH_USER: ${{ secrets.MY_EC2_USER }}
         run: |
-          rsync -avz --progress --no-compress -e "ssh -o StrictHostKeyChecking=no -o Ciphers=aes128-ctr -i private_key.pem" strapi-build.tar.gz $SSH_USER@$SSH_HOST:/home/$SSH_USER/cms-deploy-test/
+          echo "Transferring build to EC2..."
+          rsync -avz --progress --no-compress -e "ssh -o StrictHostKeyChecking=no -o Ciphers=aes128-ctr -i private_key.pem" strapi-build.tar.gz ${{ secrets.MY_EC2_USER }}@${{ secrets.MY_EC2_HOST }}:/home/${{ secrets.MY_EC2_USER }}/cms-deploy-test/
 
       - name: Deploy on EC2
         env:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
           SSH_USER: ${{ secrets.MY_EC2_USER }}
         run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.MY_EC2_USER }}@${{ secrets.MY_EC2_HOST }} << 'EOF'
             echo "🚀 Starting Automated Deployment..."
 
-            # Navigate to the deployment directory
-            cd /home/$SSH_USER/cms-deploy-test/
-
-            # Ensure Node.js, npm, and pm2 are installed
-            node -v || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs)
-            pm2 -v || npm install -g pm2
-
-            cd /home/$SSH_USER/cms-deploy-test/
-
-            # Ensure the public/uploads directory exists
-            mkdir -p public/uploads
+            # Ensure the directory exists
+            mkdir -p /home/${{ secrets.MY_EC2_USER }}/cms-deploy-test/
 
             # Stop the running Strapi instance if exists
-            cd /home/$SSH_USER/cms-deploy-test/
             pm2 stop strapi || true
 
             # Extract build files
-            cd /home/$SSH_USER/cms-deploy-test/
+            cd /home/${{ secrets.MY_EC2_USER }}/cms-deploy-test/
             tar -xvzf strapi-build.tar.gz
-
-            echo "Creating .env file..."
-
-            cd /home/$SSH_USER/cms-deploy-test/
-            rm -f .env
-            touch .env
-
-            # Extract GitHub secrets and write them to .env
-            echo "${{ toJson(secrets) }}" | jq -r 'to_entries | map(select(.key | startswith("GITHUB_SECRET_"))) | map("\(.key | sub("^GITHUB_SECRET_"; ""))=\(.value)") | .[]' > .env
-
-            echo "Generated .env file:"
-            cat .env
-
-            cd /home/$SSH_USER/cms-deploy-test/
             rm -rf strapi-build.tar.gz
 
+            # Install dependencies
+            npm ci --omit=dev
+
             # Start or Restart Strapi
-            cd /home/$SSH_USER/cms-deploy-test/
             pm2 restart strapi || pm2 start npm --name "strapi" -- start
 
             echo "✅ Deployment Completed Successfully!"
