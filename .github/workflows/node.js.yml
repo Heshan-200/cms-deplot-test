@@ -57,7 +57,7 @@ jobs:
           SSH_USER: ${{ secrets.MY_EC2_USER }}
         run: |
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
-          echo "Starting Deployment..."
+          echo "Starting Deployment...."
           cd /home/ubuntu/cms-deploy-test/
           # Ensure Node.js and npm are installed
           node -v || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs)
