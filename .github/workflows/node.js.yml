@@ -1,35 +1,15 @@
-name: Deploy Strapi to EC2
+name: Test SSH Connection to EC2
 
 on:
   push:
     branches:
-      - main  # Trigger deployment on push to the main branch
+      - main  # Runs only when code is pushed to the main branch
 
 jobs:
-  build:
+  test-ssh:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Install Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 22  # Ensure this matches your Strapi version
-
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Build Strapi
-        run: npm run build
-
-      - name: Ensure .cache directory exists
-        run: mkdir -p .cache
-
-      - name: Compress Build Files
-        run: tar -czf strapi-build.tar.gz --ignore-failed-read build config package.json package-lock.json
-
       - name: Setup SSH Key and Permissions
         env:
           PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
@@ -40,27 +20,6 @@ jobs:
       - name: Test SSH Connection
         env:
           HOST: ${{ secrets.EC2_HOST }}
-          USER: ubuntu  # Ensure this matches your EC2 user (e.g., ec2-user for Amazon Linux)
+          USER: ubuntu  # Ensure this matches your EC2 username (ec2-user for Amazon Linux)
         run: |
           ssh -vvv -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST "echo SSH Connection Successful!"
-
-      - name: Copy Build Files to EC2
-        env:
-          HOST: ${{ secrets.EC2_HOST }}
-          USER: ubuntu  # Ensure this matches your EC2 user
-        run: |
-          scp -o StrictHostKeyChecking=no -i private_key.pem strapi-build.tar.gz $USER@$HOST:/home/$USER/cms-deploy-test/
-
-      - name: Deploy Strapi on EC2
-        env:
-          HOST: ${{ secrets.EC2_HOST }}
-          USER: ubuntu
-        run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST << 'EOF'
-            echo "Starting Deployment..."
-            cd /home/$USER/cms-deploy-test/
-            tar -xzf strapi-build.tar.gz
-            npm install --production
-            pm2 restart strapi || pm2 start npm --name "strapi" -- run start
-            echo "Deployment Completed!"
-          EOF
