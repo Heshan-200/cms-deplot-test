@@ -42,11 +42,7 @@ jobs:
         run: mkdir -p .cache
 
       - name: Prepare Files for Compression
-        run: |
-          mkdir -p temp_build
-          rsync -av --progress --exclude=node_modules ./ temp_build/
-          tar -czf strapi-build.tar.gz -C temp_build .
-          rm -rf temp_build
+        run: tar -czf strapi-build.tar.gz --ignore-failed-read build config package.json package-lock.json .strapi .tmp data database public scripts src types .env .strapi-updater.json favicon.png jsconfig.json README.md
 
       - name: Setup SSH Key and Permissions
         env:
