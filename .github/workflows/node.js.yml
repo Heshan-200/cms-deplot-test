@@ -1,4 +1,5 @@
 name: Deploy Strapi to EC2
+
 on:
   push:
     branches:
@@ -8,23 +9,35 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/cache@v4
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node-
-      - run: |
-          npm i
-      - run: npm run build
-      - run: |
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Strapi
+        run: npm run build
+
+      - name: Prepare Deployment Package
+        run: |
           mkdir -p deploy
-          cp -r build config package.json package-lock.json src database node_modules deploy/
+          cp -r build config package.json package-lock.json src database node_modules public deploy/
           tar -czf strapi-build.tar.gz -C deploy .
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: strapi-build
           path: strapi-build.tar.gz
@@ -33,37 +46,72 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
         with:
           name: strapi-build
-      - env:
+
+      - name: Setup SSH Key
+        env:
           SSH_PRIVATE_KEY: ${{ secrets.MY_EC2_PRIVATE_KEY }}
         run: |
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
-      - env:
-          SSH_HOST: ${{ secrets.MY_EC2_HOST }}
-        run: |
-          rsync -avz --progress --no-compress -e "ssh -o StrictHostKeyChecking=no -o Ciphers=aes128-ctr -i private_key.pem" strapi-build.tar.gz ubuntu@$SSH_HOST:/home/ubuntu/cms-deploy-test/
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
-            # Create the uploads directory if it doesn't exist
-            mkdir -p /home/ubuntu/cms-deploy-test/public/uploads
 
-            # Stop the existing Strapi process (if any)
+      - name: Ensure rsync is Installed
+        run: sudo apt update && sudo apt install -y rsync
+
+      - name: Transfer Build to EC2
+        env:
+          SSH_HOST: ${{ secrets.MY_EC2_HOST }}
+          SSH_USER: ${{ secrets.MY_EC2_USER }}
+        run: |
+          rsync -avz --progress --no-compress -e "ssh -o StrictHostKeyChecking=no -o Ciphers=aes128-ctr -i private_key.pem" strapi-build.tar.gz $SSH_USER@$SSH_HOST:/home/$SSH_USER/cms-deploy-test/
+
+      - name: Deploy on EC2
+        env:
+          SSH_HOST: ${{ secrets.MY_EC2_HOST }}
+          SSH_USER: ${{ secrets.MY_EC2_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST << 'EOF'
+            echo "🚀 Starting Automated Deployment..."
+
+            # Navigate to the deployment directory
+            cd /home/$SSH_USER/cms-deploy-test/
+
+            # Ensure Node.js, npm, and pm2 are installed
+            node -v || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs)
+            pm2 -v || npm install -g pm2
+
+            # Ensure the public/uploads directory exists
+            mkdir -p public/uploads
+
+            # Stop the running Strapi instance if exists
             pm2 stop strapi || true
 
             # Clear memory cache (optional)
-            sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory (sudo required)"
+            sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "⚠️ Failed to clear memory (sudo required)"
 
-            # Extract the build files
-            cd /home/ubuntu/cms-deploy-test/
+            # Extract build files
             tar -xvzf strapi-build.tar.gz
-            cd /home/ubuntu/cms-deploy-test/
-
-            # Remove the tarball
             rm -rf strapi-build.tar.gz
 
-            # Install dependencies and start Strapi
-            npm install
+            # Auto-generate .env file from all GitHub Secrets
+            echo "Generating .env file..."
+            rm -f .env
+            touch .env
+
+            # Loop through all GitHub Secrets passed as environment variables
+            env | grep '^GITHUB_SECRET_' | while IFS='=' read -r key value; do
+              key=\$(echo "\$key" | sed 's/^GITHUB_SECRET_//')
+              echo "\$key=\$value" >> .env
+            done
+
+            # Install dependencies
+            npm ci --omit=dev
+
+            # Start or Restart Strapi
             pm2 restart strapi || pm2 start npm --name "strapi" -- start
+
+            echo "✅ Deployment Completed Successfully!"
           EOF
