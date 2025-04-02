@@ -8,36 +8,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Cache Node.js dependencies
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install Dependencies
-        run: npm i  # Changed from npm ci
-
-      - name: Build Strapi
-        run: npm run build
-
-      - name: Prepare Files for Deployment
-        run: |
+          restore-keys: ${{ runner.os }}-node-
+      - run: npm i
+      - run: npm run build
+      - run: |
           mkdir -p deploy
-          cp -r build config package.json package-lock.json src database public deploy/
+          cp -r build config package.json package-lock.json src database deploy/  # Minimal set of files
           tar -czf strapi-build.tar.gz -C deploy .
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: strapi-build
           path: strapi-build.tar.gz
@@ -46,37 +32,25 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: strapi-build
-
-      - name: Setup SSH Key
-        env:
+      - env:
           SSH_PRIVATE_KEY: ${{ secrets.MY_EC2_PRIVATE_KEY }}
         run: |
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
-
-      - name: Deploy to EC2
-        env:
+      - env:
           SSH_HOST: ${{ secrets.MY_EC2_HOST }}
-          SSH_USER: ${{ secrets.MY_EC2_USER }}
         run: |
-          rsync -avz --progress -e "ssh -o StrictHostKeyChecking=no -i private_key.pem" strapi-build.tar.gz $SSH_USER@$SSH_HOST:/home/$SSH_USER/cms-deploy-test/
-          ssh -o StrictHostKeyChecking=no -i private_key.pem $SSH_USER@$SSH_HOST << 'EOF'
-          cd /home/$SSH_USER/cms-deploy-test/
-          echo "Stopping Strapi to free memory..."
+          rsync -avz --progress --no-compress -e "ssh -o StrictHostKeyChecking=no -o Ciphers=aes128-ctr -i private_key.pem" strapi-build.tar.gz ubuntu@$SSH_HOST:/home/ubuntu/cms-deploy-test/
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$SSH_HOST << 'EOF'
+          cd /home/ubuntu/cms-deploy-test/  # Move to dir before extraction
           pm2 stop strapi || true
-          echo "Clearing system memory..."
-          sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory (sudo required)"
-          echo "Extracting build files..."
+          sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || echo "Failed to clear memory"
+          cd /home/ubuntu/cms-deploy-test/
           tar -xvzf strapi-build.tar.gz
-          echo "Installing production dependencies..."
-          npm i --production  # Changed from npm ci --omit=dev
-          echo "Starting Strapi..."
+          npm i --production
           pm2 start npm --name "strapi" -- start || pm2 restart strapi
-          echo "Cleaning up..."
           rm -rf strapi-build.tar.gz
-          echo "Deployment completed!"
           EOF
