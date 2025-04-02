@@ -41,8 +41,12 @@ jobs:
       - name: Ensure .cache directory exists
         run: mkdir -p .cache
 
-      - name: Compress Build Files
-        run: tar --exclude=node_modules --exclude=./strapi-build.tar.gz -czf strapi-build.tar.gz .
+      - name: Prepare Files for Compression
+        run: |
+          mkdir -p temp_build
+          rsync -av --progress --exclude=node_modules ./ temp_build/
+          tar -czf strapi-build.tar.gz -C temp_build .
+          rm -rf temp_build
 
       - name: Setup SSH Key and Permissions
         env:
