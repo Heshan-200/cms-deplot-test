@@ -10,23 +10,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test SSH Connection
-        env:
-          PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
-          HOST: ${{ secrets.EC2_HOST }}
-          USER: ubuntu
-        run: |
-          echo "$PRIVATE_KEY" > private_key.pem
-          chmod 600 private_key.pem
-          ssh -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST "echo SSH Connection Successful!"
-    
       - name: Checkout Repository
         uses: actions/checkout@v3
 
       - name: Install Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18  # Ensure this matches your Strapi version
+          node-version: 22  # Ensure this matches your Strapi version
 
       - name: Install Dependencies
         run: npm install
@@ -34,8 +24,8 @@ jobs:
       - name: Build Strapi
         run: npm run build
 
-      - name: Ensure .cache directory exists
-        run: mkdir -p .cache
+      - name: Ensure Build Directory Exists
+        run: mkdir -p build
 
       - name: Compress Build Files
         run: tar -czf strapi-build.tar.gz --ignore-failed-read build config package.json package-lock.json
@@ -44,19 +34,21 @@ jobs:
         env:
           PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           HOST: ${{ secrets.EC2_HOST }}
-          USER: ${{ secrets.EC2_USER }}
+          USER: ubuntu
         run: |
           echo "$PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
-          scp -o StrictHostKeyChecking=no -i private_key.pem strapi-build.tar.gz $USER@$HOST:/home/$USER/cms-deploy-test/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i private_key.pem" strapi-build.tar.gz $USER@$HOST:/home/$USER/cms-deploy-test/
 
       - name: Deploy to EC2
         env:
           PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           HOST: ${{ secrets.EC2_HOST }}
-          USER: ${{ secrets.EC2_USER }}
+          USER: ubuntu
         run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem $USER@$HOST << 'EOF'
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i private_key.pem $USER@$HOST << 'EOF'
             cd /home/$USER/cms-deploy-test/
             tar -xzf strapi-build.tar.gz
+            npm install
+            pm2 restart strapi || pm2 start npm --name "strapi" -- start
           EOF
