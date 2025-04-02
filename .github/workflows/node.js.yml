@@ -8,8 +8,6 @@ jobs:
   create-env:
     runs-on: ubuntu-latest
     steps:
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
       - name: Set up SSH key
         env:
           SSH_PRIVATE_KEY: ${{ secrets.MY_EC2_PRIVATE_KEY }}
@@ -21,17 +19,25 @@ jobs:
           echo "Creating .env file locally..."
           rm -f .env
           touch .env
-          # Write secrets to a temporary JSON file
-          echo "${{ toJson(secrets) }}" > secrets.json
-          # Check if secrets.json was created successfully
-          if [ ! -f secrets.json ]; then
-            echo "Error: Failed to create secrets.json"
+          # Write secrets to a temporary file
+          echo "${{ toJson(secrets) }}" > secrets.txt
+          # Check if secrets.txt was created successfully
+          if [ ! -f secrets.txt ]; then
+            echo "Error: Failed to create secrets.txt"
             exit 1
           fi
-          # Filter out secrets with newlines and process the rest
-          jq -r 'to_entries | map(select(.value | type == "string" and (contains("\n") | not)) | .key + "=" + .value) | .[]' secrets.json >> .env
+          # Process secrets with Bash, skipping multi-line values
+          while IFS=':' read -r key value; do
+            # Clean up key and value
+            key=$(echo "$key" | tr -d ' ",' | xargs)
+            value=$(echo "$value" | tr -d ' ",' | xargs)
+            # Skip empty keys or values, and skip if value contains newlines
+            if [ -n "$key" ] && [ -n "$value" ] && ! echo "$value" | grep -q $'\n'; then
+              echo "$key=$value" >> .env
+            fi
+          done < <(sed 's/^{//; s/}$//; s/,/\n/g' secrets.txt | tr -d '{}')
           # Clean up
-          rm secrets.json
+          rm secrets.txt
           echo "Generated .env file:"
           cat .env
       - name: Transfer .env to EC2
